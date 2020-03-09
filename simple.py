@@ -14,8 +14,40 @@ It Works!
 """
 
 
+def recieve(connection):
+    ## Socket library can't provide the counterpart of sendall()
+    ## For our purpose this should serve as a reasonable function
+    data = []
+    try:
+        while True:
+            received = connection.recv(1024)
+            if received:
+                data.append(received)
+            else:
+                ## This block will only be executed when socket is in 
+                ## blocking mode. If recv() returns with b"" then the 
+                ## connection is closed and we will never recieve more data.
+                ## This is useful while receiving reponse from application
+                ## application must call socket.shutdown() or socket.close()
+                ## for recv() to return b"".
+                break
+    except socket.error:
+        ## When socket is in nonlocking mode, if no more data can be read then 
+        ## socket.recv() will throw socket.error. 
+        ## Consider this as the end of message
+        pass
+
+    return b"".join(data)
+
+
 def handle_request(client_connection):
-    request = client_connection.recv(1024)
+    # Put this socket in nonblocking mode
+    # Now socket.recv() is expected to raise socket.error if there is nothing to receive
+    # The side effect is that we don't have to decode the Content-Length header and wait till the entire message is recieved
+    # CAUTION: This will only work if used after a Bufferring Proxy e.g. NGINX or Waitress
+    client_connection.setblocking(0)
+    request = recieve(client_connection)
+
     print("Received Request ...")
     print(request.decode())
 
@@ -24,7 +56,7 @@ def handle_request(client_connection):
 
     print(f"Forwarding Request to ... {FORWARD_HOST}:{FORWARD_PORT}")
     forward_socket.sendall(request)
-    response = forward_socket.recv(1024)
+    response = recieve(forward_socket)
     print(f"Received response ... ")
     print(response.decode())
 
